@@ -1,5 +1,6 @@
 from flask import Flask, jsonify
 from api.app.api.v1.health import health_bp
+from api.app.api.v1.operator_auth import operator_auth_bp
 
 def create_app():
     app = Flask(__name__)
@@ -12,6 +13,7 @@ def create_app():
         }), 200
 
     app.register_blueprint(health_bp)
+    app.register_blueprint(operator_auth_bp, url_prefix="/api/v1/operator")
 
     return app
 
