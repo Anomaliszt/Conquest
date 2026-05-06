@@ -1,0 +1,2662 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Agent Control REST API",
+    "version": "1.0.0",
+    "description": "Production REST API contract for the agent control server. This contract defines the complete HTTP surface, authentication requirements, supported commands, request fields, response fields, state transitions, and error behavior. Implementations must not add hidden approval flows, sandboxing, policy evaluation, redaction, capability negotiation, or unsupported commands. The only supported task commands are `whoami`, `uptime`, and `shell_execute`. Every state-changing request listed with `Idempotency-Key` requires that header. Operator registration requires an out-of-band one-time registration token; this API does not expose any endpoint that creates registration tokens. A task that passes validation is persisted, queued, and dispatched to the target agent unless it is cancelled before dispatch."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000"
+    }
+  ],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "summary": "Liveness healthcheck",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Service is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Returns service liveness. A 200 response means the HTTP service process is alive. This endpoint performs no dependency checks and requires no authentication."
+      }
+    },
+    "/readyz": {
+      "get": {
+        "summary": "Readiness healthcheck",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Service is ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service is not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Returns service readiness. A 200 response means required dependencies are ready. A 503 response means at least one required dependency is unavailable."
+      }
+    },
+    "/api/v1/operator/register": {
+      "post": {
+        "summary": "Register operator",
+        "description": "Registers one operator account using a valid one-time registration token provisioned outside this API. The API does not create registration tokens. The server must reject missing, invalid, expired, or reused registration tokens with 401. On success, the server must persist the operator account and invalidate the registration token.",
+        "tags": [
+          "Operator Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterOperatorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Operator registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterOperatorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/operator/login": {
+      "post": {
+        "summary": "Login operator",
+        "description": "Authenticates an active operator with username and password. On success, the server returns a short-lived Operator JWT. Requests with invalid credentials, disabled accounts, or locked accounts must return 401.",
+        "tags": [
+          "Operator Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginOperatorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operator authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginOperatorResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/agents": {
+      "get": {
+        "summary": "List agents",
+        "tags": [
+          "Agents"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AgentStatus"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/SortAgents"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agents list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Returns registered agents visible to the authenticated operator. The response must be cursor-paginated and sorted according to the `sort` query parameter."
+      }
+    },
+    "/api/v1/agents/{agent_id}": {
+      "get": {
+        "summary": "Get agent details",
+        "tags": [
+          "Agents"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AgentId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Returns one registered agent by `agent_id`. The server must return 404 when the agent does not exist or is not visible to the authenticated operator."
+      },
+      "delete": {
+        "summary": "Decommission agent",
+        "description": "Decommissions an agent. The server must revoke the agent access tokens and refresh tokens, cancel queued tasks for the agent, and emit an immutable audit record. Running tasks for the agent must become orphaned after the configured offline timeout unless the agent reports a terminal result before that timeout.",
+        "tags": [
+          "Agents"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AgentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Agent decommission accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteAgentResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/register": {
+      "post": {
+        "summary": "Register an agent without authentication",
+        "description": "Registers an agent without authentication, without operator authorization, without approval, and without a registration token. Any client that can reach this endpoint and submits a valid registration payload can create an agent record and receive a short-lived Agent JWT plus a single-use refresh token. Network reachability to this endpoint is the only registration boundary. The server must reject duplicate agent identities and invalid payloads.",
+        "tags": [
+          "Agent"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterAgentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Agent registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterAgentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/token/refresh": {
+      "post": {
+        "summary": "Refresh agent access token",
+        "description": "Exchanges a valid agent refresh token for a new short-lived Agent JWT and a rotated refresh token. Refresh tokens are single-use. Reuse of a rotated or revoked refresh token must return 401 and must revoke the token family.",
+        "tags": [
+          "Agent"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshAgentTokenRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agent token refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshAgentTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/heartbeat": {
+      "post": {
+        "summary": "Agent heartbeat",
+        "description": "Records heartbeat for the authenticated agent identified by the Agent JWT `sub` claim. The server must reject a heartbeat when the token subject does not identify an active registered agent.",
+        "tags": [
+          "Agent"
+        ],
+        "security": [
+          {
+            "AgentBearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentHeartbeatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Heartbeat accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentHeartbeatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/agents/{agent_id}/tasks": {
+      "post": {
+        "summary": "Create task for an agent",
+        "description": "Creates a task for a registered agent. The server must validate the task type, payload, authorization, and command allowlist. If validation succeeds, the server must persist the task with status `queued` and must dispatch it to the agent over the WebSocket channel. The system does not implement approval, sandboxing, policy evaluation, redaction, or capability negotiation. A task is executed after dispatch unless it is cancelled before dispatch, or execution fails according to the task lifecycle.",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AgentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Task created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks": {
+      "get": {
+        "summary": "List tasks",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskStatus"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/SortTasks"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tasks list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Returns tasks visible to the authenticated operator. The response must include terminal and non-terminal tasks unless filters are supplied. Filters must not alter stored task state."
+      }
+    },
+    "/api/v1/tasks/{task_id}": {
+      "get": {
+        "summary": "Get task details",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TaskId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Returns one task by `task_id`. The server must return 404 when the task does not exist or is not visible to the authenticated operator."
+      }
+    },
+    "/api/v1/tasks/{task_id}/cancel": {
+      "post": {
+        "summary": "Request task cancellation",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TaskId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task cancellation requested",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelTaskResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Records a cancellation request for a task. If the task is `queued`, the server must transition it to `cancelled`. If the task is `dispatched`, `running`, or `cancellation_requested`, the server must send a cancellation message to the owning agent over the WebSocket channel. The final task state must become `cancelled`, `failed`, or `orphaned` according to the lifecycle.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelTaskRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/{task_id}/result": {
+      "get": {
+        "summary": "Operator reads task result",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TaskId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResultResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "description": "Returns the stored terminal result for a task. The server must return 404 when no result exists for the task."
+      }
+    },
+    "/api/v1/task-history": {
+      "get": {
+        "summary": "Retrieve server-side task history",
+        "description": "Returns the persisted server-side task history. The server must store every created task and every terminal task state. History records must include the command, target agent, timestamps, current or final status, and result metadata when available. Task history is immutable for audit purposes. The API does not provide task deletion. This endpoint must not dispatch, cancel, or mutate tasks.",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskCommand"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TaskStatus"
+            }
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "created_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PageSize"
+          },
+          {
+            "$ref": "#/components/parameters/PageCursor"
+          },
+          {
+            "$ref": "#/components/parameters/SortTasks"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task history list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskHistoryListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/generate-payload": {
+      "post": {
+        "summary": "Generate merged agent payload",
+        "description": "Uploads a configuration/data file, merges it into the agent launcher using PyInstaller, and returns the 'launcher-merged.exe'.",
+        "tags": [
+          "Packaging"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file to be bundled into the generated .exe."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The merged executable file.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string",
+                  "example": "attachment; filename=\"launcher-merged.exe\""
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/v1/tasks/send-all": {
+      "post": {
+        "summary": "Create tasks for all matching agents",
+        "description": "Creates one task for each agent matching the supplied filter. The operation is operator-authenticated, idempotent, and uses the existing task lifecycle for each created task. When dry_run is true, the server returns targeting information without creating tasks.",
+        "tags": [
+          "Tasks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendAllTasksRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Bulk task creation accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendAllTasksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "operationId": "sendAllTasks"
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "AgentId": {
+        "name": "agent_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^agent_[A-Za-z0-9_-]{3,64}$"
+        },
+        "example": "agent_001"
+      },
+      "TaskId": {
+        "name": "task_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^task_[A-Za-z0-9_-]{3,64}$"
+        },
+        "example": "task_abc123"
+      },
+      "PageSize": {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 1,
+          "maximum": 500
+        }
+      },
+      "PageCursor": {
+        "name": "page_cursor",
+        "in": "query",
+        "required": false,
+        "description": "Opaque pagination cursor returned by previous response.",
+        "schema": {
+          "type": "string",
+          "maxLength": 2048
+        }
+      },
+      "SortAgents": {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "last_seen_desc",
+            "last_seen_asc",
+            "created_at_desc",
+            "created_at_asc",
+            "id_asc"
+          ],
+          "default": "last_seen_desc"
+        }
+      },
+      "SortTasks": {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "created_at_desc",
+            "created_at_asc",
+            "updated_at_desc",
+            "updated_at_asc",
+            "id_asc"
+          ],
+          "default": "created_at_desc"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 128
+        },
+        "description": "Required for every state-changing operation that declares this header. Reusing the same key with a different payload must return 409. Replaying the same key with the same payload must return the original operation result."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid payload, path parameter, header, or query parameter.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "BAD_REQUEST",
+                "message": "Invalid request payload",
+                "details": [
+                  {
+                    "field": "payload.command",
+                    "reason": "Field is required"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing, expired, malformed, reused, or revoked authentication token.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "UNAUTHORIZED",
+                "message": "Authentication token is missing or invalid"
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Authenticated but not allowed, or token subject does not match requested resource.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "FORBIDDEN",
+                "message": "You do not have permission to access this resource"
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Requested resource was not found.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "NOT_FOUND",
+                "message": "Resource not found"
+              }
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Resource state conflict, invalid state transition, token rotation conflict, or idempotency conflict.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "CONFLICT",
+                "message": "Resource state conflict",
+                "details": [
+                  {
+                    "field": "status",
+                    "reason": "Requested state transition is not allowed for the current task status"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "Request was syntactically valid but failed semantic validation.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "UNPROCESSABLE_ENTITY",
+                "message": "Task payload failed schema validation",
+                "details": [
+                  {
+                    "field": "payload",
+                    "reason": "Payload does not match registered task schema"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "Too many requests.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "RATE_LIMITED",
+                "message": "Too many requests",
+                "details": [
+                  {
+                    "field": "request",
+                    "reason": "Rate limit exceeded. Retry after 60 seconds."
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds to wait before retrying.",
+            "schema": {
+              "type": "integer"
+            },
+            "example": 60
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal server error.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "request_id": "req_01HXABCDEF",
+              "error": {
+                "code": "INTERNAL_ERROR",
+                "message": "Internal server error"
+              }
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Operator JWT. Issued only by POST /api/v1/operator/login. Required claims: iss, sub as operator_id, aud, iat, exp, jti, scope. Maximum lifetime: 15 minutes. Revoked jti values must be rejected."
+      },
+      "AgentBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Agent JWT. Required claims: iss, sub as agent_id, aud, iat, exp, jti, scope, and cnf/device binding when agent-bound tokens are enabled. Maximum lifetime: 15 minutes. Token sub must match the authenticated agent. Revoked jti values and tokens for decommissioned agents must be rejected."
+      }
+    },
+    "schemas": {
+      "ErrorCode": {
+        "type": "string",
+        "enum": [
+          "BAD_REQUEST",
+          "UNAUTHORIZED",
+          "FORBIDDEN",
+          "NOT_FOUND",
+          "CONFLICT",
+          "UNPROCESSABLE_ENTITY",
+          "RATE_LIMITED",
+          "INTERNAL_ERROR"
+        ]
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "required": [
+          "field",
+          "reason"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "example": "payload.command"
+          },
+          "reason": {
+            "type": "string",
+            "example": "Field is required"
+          },
+          "value": {
+            "nullable": true,
+            "description": "Rejected value. The server omits this field when the value contains secrets, credentials, personal data, or task output."
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "error"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "example": "req_01HXABCDEF"
+          },
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "$ref": "#/components/schemas/ErrorCode"
+              },
+              "message": {
+                "type": "string",
+                "example": "Request failed"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AgentStatus": {
+        "type": "string",
+        "enum": [
+          "online",
+          "offline",
+          "dead",
+          "decommissioned"
+        ],
+        "example": "online"
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "dispatched",
+          "running",
+          "completed",
+          "failed",
+          "cancellation_requested",
+          "cancelled",
+          "orphaned"
+        ],
+        "example": "queued"
+      },
+      "CursorPagination": {
+        "type": "object",
+        "required": [
+          "page_size",
+          "next_cursor",
+          "has_more",
+          "sort"
+        ],
+        "properties": {
+          "page_size": {
+            "type": "integer",
+            "example": 50
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true,
+            "example": "eyJjcmVhdGVkX2F0IjoiMjAyNi0wNC0yOVQxNDoyNDowMFoifQ"
+          },
+          "has_more": {
+            "type": "boolean",
+            "example": true
+          },
+          "sort": {
+            "type": "string",
+            "example": "created_at_desc"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ok"
+          }
+        }
+      },
+      "ReadinessResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "checks"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "example": "ready"
+          },
+          "checks": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "database": "ok",
+              "redis": "ok"
+            }
+          }
+        }
+      },
+      "Agent": {
+        "type": "object",
+        "required": [
+          "id",
+          "hostname",
+          "os",
+          "user",
+          "status",
+          "last_seen",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "agent_001"
+          },
+          "hostname": {
+            "type": "string",
+            "example": "win01"
+          },
+          "os": {
+            "type": "string",
+            "example": "windows"
+          },
+          "user": {
+            "type": "string",
+            "example": "operator\\\\user"
+          },
+          "version": {
+            "type": "string",
+            "example": "1.0.0"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentStatus"
+          },
+          "last_seen": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-29T14:22:10Z"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-29T14:20:00Z"
+          },
+          "decommissioned_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "AgentResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Agent"
+          }
+        }
+      },
+      "AgentListResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/CursorPagination"
+          }
+        }
+      },
+      "DeleteAgentResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "audit"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "agent_id",
+              "status",
+              "deleted_at",
+              "deletion_mode"
+            ],
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "example": "agent_001"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "decommissioned"
+                ],
+                "example": "decommissioned"
+              },
+              "deleted_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "deletion_mode": {
+                "type": "string",
+                "enum": [
+                  "soft_delete"
+                ],
+                "example": "soft_delete"
+              }
+            }
+          },
+          "audit": {
+            "$ref": "#/components/schemas/AuditInfo"
+          }
+        }
+      },
+      "RegisterAgentRequest": {
+        "type": "object",
+        "required": [
+          "hostname",
+          "os",
+          "user",
+          "version"
+        ],
+        "properties": {
+          "hostname": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "example": "win01"
+          },
+          "os": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "windows"
+          },
+          "user": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "example": "operator\\\\user"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "example": "1.0.0"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "maxProperties": 50
+          }
+        }
+      },
+      "RegisterAgentResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "agent_id",
+              "agent_token",
+              "token_type",
+              "expires_in",
+              "refresh_token",
+              "refresh_expires_in",
+              "status"
+            ],
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "example": "agent_001"
+              },
+              "agent_token": {
+                "type": "string",
+                "example": "eyJhbGciOi..."
+              },
+              "token_type": {
+                "type": "string",
+                "enum": [
+                  "Bearer"
+                ],
+                "example": "Bearer"
+              },
+              "expires_in": {
+                "type": "integer",
+                "description": "Agent JWT lifetime in seconds.",
+                "example": 900
+              },
+              "refresh_token": {
+                "type": "string",
+                "description": "Opaque single-use refresh token. Must be stored hashed server-side and rotated on every refresh.",
+                "example": "refresh_token_value"
+              },
+              "refresh_expires_in": {
+                "type": "integer",
+                "description": "Refresh token lifetime in seconds.",
+                "example": 2592000
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "online"
+                ],
+                "example": "online"
+              }
+            }
+          }
+        }
+      },
+      "RefreshAgentTokenRequest": {
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 4096,
+            "description": "Opaque refresh token issued during registration or previous refresh. Single-use only."
+          }
+        }
+      },
+      "RefreshAgentTokenResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "agent_id",
+              "agent_token",
+              "token_type",
+              "expires_in",
+              "refresh_token",
+              "refresh_expires_in"
+            ],
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "example": "agent_001"
+              },
+              "agent_token": {
+                "type": "string",
+                "example": "eyJhbGciOi..."
+              },
+              "token_type": {
+                "type": "string",
+                "enum": [
+                  "Bearer"
+                ],
+                "example": "Bearer"
+              },
+              "expires_in": {
+                "type": "integer",
+                "description": "Agent JWT lifetime in seconds.",
+                "example": 900
+              },
+              "refresh_token": {
+                "type": "string",
+                "description": "New rotated opaque refresh token. The previous refresh token is immediately revoked.",
+                "example": "new_refresh_token_value"
+              },
+              "refresh_expires_in": {
+                "type": "integer",
+                "description": "Refresh token lifetime in seconds.",
+                "example": 2592000
+              }
+            }
+          }
+        }
+      },
+      "AgentHeartbeatRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "online"
+            ],
+            "example": "online",
+            "description": "Current agent liveness status. Busy state is not part of the public AgentStatus enum in this simplified contract."
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true,
+            "maxProperties": 50
+          }
+        }
+      },
+      "AgentHeartbeatResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "agent_id",
+              "status",
+              "server_time"
+            ],
+            "properties": {
+              "agent_id": {
+                "type": "string",
+                "example": "agent_001"
+              },
+              "status": {
+                "type": "string",
+                "example": "online",
+                "description": "Accepted agent status after heartbeat."
+              },
+              "server_time": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2026-04-29T15:00:00Z"
+              }
+            }
+          }
+        }
+      },
+      "CreateTaskRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "payload"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/TaskCommand"
+          },
+          "payload": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WhoamiPayload"
+              },
+              {
+                "$ref": "#/components/schemas/UptimePayload"
+              },
+              {
+                "$ref": "#/components/schemas/ShellExecutePayload"
+              }
+            ],
+            "description": "Command payload. `whoami` and `uptime` require an empty object. `shell_execute` requires `command` and optional `args` according to `ShellExecutePayload`."
+          },
+          "max_attempts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 3
+          },
+          "run_timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "default": 3600
+          }
+        },
+        "description": "Task creation request. `type` must be one of the supported task commands. `payload` must match the schema for that command."
+      },
+      "Task": {
+        "type": "object",
+        "required": [
+          "id",
+          "agent_id",
+          "type",
+          "status",
+          "created_at",
+          "updated_at",
+          "attempt_count"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "task_abc123"
+          },
+          "agent_id": {
+            "type": "string",
+            "example": "agent_001"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TaskCommand"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "example": 1
+          },
+          "max_attempts": {
+            "type": "integer",
+            "example": 3
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-29T14:24:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dispatched_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ack_deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "run_deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancel_requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancel_deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancellation_reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          }
+        }
+      },
+      "TaskResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Task"
+          }
+        }
+      },
+      "TaskListResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Task"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/CursorPagination"
+          }
+        }
+      },
+      "CancelTaskResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "task_id",
+              "status",
+              "cancel_requested_at"
+            ],
+            "properties": {
+              "task_id": {
+                "type": "string",
+                "example": "task_abc123"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "cancellation_requested",
+                  "cancelled"
+                ],
+                "example": "cancellation_requested",
+                "description": "cancellation_requested for dispatched/running tasks; cancelled when a queued task is cancelled before dispatch."
+              },
+              "cancel_requested_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "cancel_deadline_at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true,
+                "description": "Deadline by which the agent is expected to report cooperative cancellation over WebSocket, when applicable."
+              },
+              "preserve_partial_output": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether the server will ask the agent, over WebSocket, to preserve partial output while cancelling."
+              }
+            },
+            "description": "Server-side acknowledgement that an operator cancellation request was accepted. This does not mean the agent has stopped yet; final cancellation is reported over WebSocket and exposed later through task status/result reads."
+          }
+        }
+      },
+      "TaskResult": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "agent_id",
+          "status"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "example": "task_abc123"
+          },
+          "agent_id": {
+            "type": "string",
+            "example": "agent_001"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "example": "completed"
+          },
+          "exit_code": {
+            "type": "integer",
+            "example": 0
+          },
+          "stdout": {
+            "type": "string",
+            "maxLength": 1048576,
+            "example": "win01",
+            "description": "Task standard output stored exactly as submitted by the agent. The API stores and returns this value unchanged. No redaction, masking, truncation beyond maxLength validation, or secret detection is performed by this contract."
+          },
+          "stderr": {
+            "type": "string",
+            "maxLength": 1048576,
+            "example": "",
+            "description": "Task standard error stored exactly as submitted by the agent. The API stores and returns this value unchanged. No redaction, masking, truncation beyond maxLength validation, or secret detection is performed by this contract."
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-04-29T14:24:03Z"
+          },
+          "partial": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "description": "Result record visible to operators over REST. Results are produced by agents over the WebSocket protocol and stored by the server for later operator reads."
+      },
+      "TaskResultResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TaskResult"
+          }
+        }
+      },
+      "AuditInfo": {
+        "type": "object",
+        "required": [
+          "request_id",
+          "actor_sub",
+          "action",
+          "created_at"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "example": "req_01HXABCDEF"
+          },
+          "actor_sub": {
+            "type": "string",
+            "example": "user_123"
+          },
+          "action": {
+            "type": "string",
+            "example": "agent.decommission"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CancelTaskRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Human-readable reason for cancellation. Stored in audit events and exposed to the assigned agent when it does not contain secrets, credentials, personal data, or task output."
+          },
+          "force_after_seconds": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3600,
+            "default": 30,
+            "description": "Grace period for cooperative cancellation before the server marks the task orphaned or failed according to lifecycle rules."
+          },
+          "preserve_partial_output": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether partial stdout/stderr or artifacts is retained if the agent reports cancellation over WebSocket."
+          }
+        }
+      },
+      "TaskCommand": {
+        "type": "string",
+        "enum": [
+          "whoami",
+          "uptime",
+          "shell_execute"
+        ],
+        "description": "Authoritative and exhaustive list of supported task commands. The server must reject every command outside this enum with 422."
+      },
+      "WhoamiPayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Payload for whoami. This command takes no arguments.",
+        "properties": {}
+      },
+      "UptimePayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Payload for uptime. This command takes no arguments.",
+        "properties": {}
+      },
+      "ShellExecutePayload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command",
+          "args"
+        ],
+        "description": "Payload for `shell_execute`.",
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Raw shell string.",
+            "example": "diagnostic_hostname"
+          },
+          "args": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "description": "Arguments of command.",
+            "example": []
+          }
+        }
+      },
+      "TaskHistoryEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "agent_id",
+          "type",
+          "payload",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "example": "task_abc123"
+          },
+          "agent_id": {
+            "type": "string",
+            "example": "agent_001"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TaskCommand"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Payload accepted at task creation."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dispatched_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancel_requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "example": 1
+          },
+          "exit_code": {
+            "type": "integer",
+            "nullable": true,
+            "example": 0
+          },
+          "failure_reason": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          },
+          "result_available": {
+            "type": "boolean",
+            "description": "True when /api/v1/tasks/{task_id}/result returns a result for this task."
+          }
+        }
+      },
+      "TaskHistoryListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "pagination"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskHistoryEntry"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/CursorPagination"
+          }
+        }
+      },
+      "RegisterOperatorRequest": {
+        "type": "object",
+        "required": [
+          "registration_token",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "registration_token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 4096,
+            "description": "One-time token provisioned outside this API. This API does not expose an endpoint that creates registration tokens."
+          },
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.-]+$",
+            "example": "operator.alice"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 4096,
+            "format": "password"
+          }
+        },
+        "description": "Registers one operator account. The registration token is consumed atomically and cannot be reused."
+      },
+      "Operator": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^operator_[A-Za-z0-9_-]{3,64}$",
+            "example": "operator_001"
+          },
+          "username": {
+            "type": "string",
+            "example": "operator.alice"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "example": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RegisterOperatorResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Operator"
+          }
+        }
+      },
+      "LoginOperatorRequest": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 100
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 4096,
+            "format": "password"
+          }
+        },
+        "description": "Authenticates an active operator account."
+      },
+      "LoginOperatorResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "operator_id",
+              "operator_token",
+              "token_type",
+              "expires_in"
+            ],
+            "properties": {
+              "operator_id": {
+                "type": "string",
+                "example": "operator_001"
+              },
+              "operator_token": {
+                "type": "string",
+                "example": "eyJhbGciOi..."
+              },
+              "token_type": {
+                "type": "string",
+                "enum": [
+                  "Bearer"
+                ],
+                "example": "Bearer"
+              },
+              "expires_in": {
+                "type": "integer",
+                "description": "Operator JWT lifetime in seconds.",
+                "example": 900
+              }
+            }
+          }
+        }
+      },
+      "SendAllAgentFilter": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentStatus"
+            },
+            "minItems": 1,
+            "uniqueItems": true,
+            "default": [
+              "online"
+            ],
+            "description": "Agent statuses eligible for bulk task creation. Defaults to online agents only."
+          },
+          "include_agent_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^agent_[A-Za-z0-9_-]{3,64}$"
+            },
+            "maxItems": 5000,
+            "uniqueItems": true,
+            "description": "Optional explicit allowlist of agent IDs. When supplied, only these agents are eligible before other filters are applied."
+          },
+          "exclude_agent_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^agent_[A-Za-z0-9_-]{3,64}$"
+            },
+            "maxItems": 5000,
+            "uniqueItems": true,
+            "description": "Optional list of agent IDs to exclude from the bulk operation."
+          }
+        },
+        "description": "Filter used to select agents for send_all. The server must evaluate the filter at request processing time and must not target decommissioned agents unless explicitly allowed by future contract versions."
+      },
+      "SendAllTasksRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "payload"
+        ],
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/TaskCommand"
+          },
+          "payload": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WhoamiPayload"
+              },
+              {
+                "$ref": "#/components/schemas/UptimePayload"
+              },
+              {
+                "$ref": "#/components/schemas/ShellExecutePayload"
+              }
+            ],
+            "description": "Command payload. Must match the same command schema used by CreateTaskRequest."
+          },
+          "agent_filter": {
+            "$ref": "#/components/schemas/SendAllAgentFilter"
+          },
+          "max_attempts": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 3
+          },
+          "run_timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "default": 3600
+          },
+          "concurrency_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 25,
+            "description": "Maximum number of created tasks the dispatcher may run concurrently for this bulk operation."
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, the server returns the target summary without creating or dispatching tasks."
+          }
+        },
+        "description": "Bulk task creation request. The server creates one ordinary task per matching agent unless dry_run is true. The endpoint does not introduce a new TaskCommand value."
+      },
+      "SendAllSkippedAgent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agent_id",
+          "reason"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "example": "agent_001"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "filtered_out",
+              "not_visible",
+              "decommissioned",
+              "offline",
+              "duplicate",
+              "task_creation_failed"
+            ],
+            "example": "offline"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      },
+      "SendAllTasksResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "bulk_task_id",
+              "status",
+              "dry_run",
+              "matched_agents",
+              "created_tasks",
+              "skipped_agents",
+              "task_ids",
+              "created_at"
+            ],
+            "properties": {
+              "bulk_task_id": {
+                "type": "string",
+                "pattern": "^bulk_[A-Za-z0-9_-]{3,64}$",
+                "example": "bulk_abc123"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "dry_run"
+                ],
+                "example": "accepted"
+              },
+              "dry_run": {
+                "type": "boolean",
+                "example": false
+              },
+              "matched_agents": {
+                "type": "integer",
+                "minimum": 0,
+                "example": 42
+              },
+              "created_tasks": {
+                "type": "integer",
+                "minimum": 0,
+                "example": 42
+              },
+              "skipped_agents": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SendAllSkippedAgent"
+                }
+              },
+              "task_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^task_[A-Za-z0-9_-]{3,64}$"
+                }
+              },
+              "concurrency_limit": {
+                "type": "integer",
+                "example": 25
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "example": "2026-04-29T15:00:00Z"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-task-lifecycle": {
+    "transitions": [
+      "queued -> dispatched",
+      "queued -> cancelled",
+      "dispatched -> running",
+      "dispatched -> queued",
+      "dispatched -> cancelled",
+      "running -> completed",
+      "running -> failed",
+      "running -> orphaned",
+      "running -> cancelled",
+      "orphaned -> queued",
+      "orphaned -> failed",
+      "running -> cancellation_requested",
+      "cancellation_requested -> cancelled",
+      "cancellation_requested -> failed",
+      "cancellation_requested -> orphaned"
+    ],
+    "terminal_states": [
+      "completed",
+      "failed",
+      "cancelled"
+    ],
+    "timeouts": {
+      "ack_timeout_seconds": 60,
+      "run_timeout_seconds": 3600,
+      "agent_offline_timeout_seconds": 120,
+      "cancel_grace_seconds": 30
+    },
+    "idempotency": {
+      "required_for_state_changes": true,
+      "header": "Idempotency-Key",
+      "missing_key_status": 400,
+      "conflict_status": 409,
+      "same_key_same_request": "return_stored_response",
+      "same_key_different_request": "return_409"
+    },
+    "agent_disappearance": {
+      "after_offline_timeout": "running tasks become orphaned",
+      "retryable_orphaned_tasks": "return to queued until max_attempts is reached",
+      "non_retryable_or_max_attempts_reached": "move to failed"
+    },
+    "cancellation": "REST cancellation records an operator request. Execution-side cancellation is delivered and confirmed over the agent WebSocket channel. Partial output is attached to the stored task result when the agent provides it.",
+    "transport_boundary": "Operators create, cancel, and read tasks over REST. Agents receive task dispatches and send ack/result/cancelled messages over WebSocket, as documented in the AsyncAPI contract.",
+    "dispatch_rule": "A queued task is dispatched automatically when its owning agent is available, unless the task is cancelled before dispatch. There is no approval gate.",
+    "history": "Task records are immutable. The API does not provide task deletion. Task history is retained for every task state transition and terminal result.",
+    "result_normalization": "All WebSocket terminal events are normalized into a single REST task result record exposed by GET /api/v1/tasks/{task_id}/result when a terminal result exists."
+  },
+  "x-contract-boundaries": {
+    "capabilities": "This API has no agent capability discovery or negotiation. The server treats registered, non-decommissioned agents as eligible for every task type allowed by the server allowlist. Unsupported task behavior is reported as task_failed by the agent.",
+    "idempotency": "Idempotency-Key is mandatory for POST and DELETE operations that change server state. Missing keys return 400. Key reuse with a different payload or operation returns 409.",
+    "task_status": "The only valid task statuses are the values in components.schemas.TaskStatus, including cancellation_requested. Clients MUST reject unknown statuses.",
+    "output": "stdout and stderr are accepted, stored, emitted, and returned unchanged. The contract defines no redaction feature.",
+    "websocket_identity": "Agent task execution is bound to the authenticated WebSocket identity defined in the AsyncAPI contract. REST does not define a second dispatch channel.",
+    "operator_events_transport": "Operator lifecycle events are delivered only by the AsyncAPI WebSocket channel /ws/operator/events. The REST contract does not define an operator event response schema or event polling endpoint.",
+    "send_all": "POST /api/v1/tasks/send-all is a bulk scheduling endpoint. It creates one normal task per matching agent using the existing TaskCommand values and task lifecycle. It does not add a new agent command or bypass command allowlist, idempotency, history, authorization, or result handling."
+  },
+  "x-task-command-allowlist": {
+    "supported_commands": [
+      "whoami",
+      "uptime",
+      "shell_execute"
+    ],
+    "whoami": "Returns the operating-system user identity for the agent process. Payload MUST be an empty object.",
+    "uptime": "Returns host uptime as reported by the agent operating system. Payload MUST be an empty object.",
+    "shell_execute": "Executes a command as a raw command line.",
+    "rejection": "Task creation requests using any other type or invalid payload return 422 and are not stored or dispatched."
+  },
+  "x-token-rules": {
+    "agent_access_token": {
+      "lifetime_seconds": 900,
+      "required_claims": [
+        "iss",
+        "sub",
+        "aud",
+        "iat",
+        "exp",
+        "jti",
+        "scope"
+      ],
+      "revocation": "Revoked jti values and tokens for decommissioned agents must be rejected."
+    },
+    "agent_refresh_token": {
+      "lifetime_seconds": 2592000,
+      "rotation": "Refresh tokens are single-use and rotated on every successful refresh.",
+      "storage": "Only hashed refresh tokens are stored server-side.",
+      "reuse_detection": "Reuse of an already rotated refresh token revokes the token family and returns 401.",
+      "revocation": "Refresh tokens are revoked when the agent is decommissioned, when reuse is detected, or by administrative action."
+    }
+  },
+  "x-task-history": {
+    "storage": "The server creates one history entry when task creation succeeds.",
+    "updates": "The server updates the history entry on dispatch, running acknowledgement, completion, failure, cancellation request, cancellation, orphaning, and deletion.",
+    "retrieval": "Operators retrieve history through GET /api/v1/task-history.",
+    "boundary": "History retrieval is read-only and does not expose any command not accepted at task creation.",
+    "send_all": "Each task created by send_all is stored as a normal task history entry. The bulk_task_id groups related task records but does not replace per-task history."
+  },
+  "x-operator-authentication": {
+    "registration_token_provisioning": "Operator registration tokens are created outside this API by deployment/bootstrap tooling or an administrator-controlled secret process.",
+    "api_boundary": "This API never creates, lists, returns, rotates, or reveals operator registration tokens.",
+    "registration": "POST /api/v1/operator/register consumes exactly one valid registration token and creates exactly one operator account.",
+    "login": "POST /api/v1/operator/login authenticates an existing active operator and returns an Operator JWT.",
+    "protected_access": "Protected REST endpoints require BearerAuth with a valid Operator JWT."
+  },
+  "x-agent-registration": {
+    "authentication": "none",
+    "authorization": "none",
+    "registration_token": "none",
+    "boundary": "Any client that can reach POST /api/v1/agent/register and submits a valid payload can register an agent and receive agent credentials. Network reachability is the only registration boundary.",
+    "duplicates": "The server must reject duplicate agent identities."
+  }
+}

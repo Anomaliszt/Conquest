@@ -1,0 +1,785 @@
+asyncapi: 3.1.0
+info:
+  title: Agent Control WebSocket Protocol
+  version: 1.0.0
+  description: Production WebSocket contract for agent task dispatch and operator
+    event delivery. This contract defines the complete WebSocket surface, supported
+    messages, ordering rules, replay rules, connection ownership, and payload fields.
+    Implementations must not add hidden approval flows, sandboxing, policy evaluation,
+    redaction, capability negotiation, or unsupported commands. Each agent identity
+    must have at most one active WebSocket connection. A task dispatched to an agent
+    must be acknowledged, completed, failed, cancelled, or orphaned according to the
+    lifecycle.
+servers:
+  local:
+    host: localhost:8000
+    pathname: /
+    protocol: ws
+    description: Local development WebSocket server. Use wss in deployed environments.
+  localSecure:
+    host: localhost:8000
+    pathname: /
+    protocol: wss
+    description: Local TLS WebSocket server when HTTPS/TLS is enabled.
+channels:
+  agentTasks:
+    address: /ws/agent/tasks
+    title: Agent task WebSocket
+    description: 'Authenticated agent channel.
+
+
+      Server to agent:
+
+      - `task_dispatched`: assign a task to the connected authenticated agent.
+
+      - `task_cancel_requested`: request cooperative cancellation of a running task.
+
+      - `agent_ws_error`: report a protocol, authorization, or state-transition error.
+
+
+      Agent to server:
+
+      - `task_ack`: acknowledge task start.
+
+      - `task_result`: submit completed or failed final output.
+
+      - `task_cancelled`: confirm cooperative cancellation with partial output when
+      available.
+
+
+      Connection rules:
+
+      - Authenticated with `AgentBearerAuth`; the JWT `sub` is the agent identity
+      for the connection.
+
+      - Exactly one active task WebSocket is allowed per agent identity.
+
+      - When a second authenticated connection for the same agent opens, the server
+      must either reject it with `agent_ws_error` code `DUPLICATE_CONNECTION` or atomically
+      replace the older connection and mark any unacknowledged dispatches for replay.
+
+      - The server must not dispatch tasks for another agent on this connection.
+
+      - Agents do not advertise capabilities over WebSocket.
+
+      - The server dispatches server-allowed task types to active registered agents.
+      There is no capability negotiation.
+
+      - Every client-to-server task message must be idempotent by `task_id`; duplicate
+      `task_ack`, `task_result`, or `task_cancelled` messages for the same final state
+      are ignored after the first accepted message.
+
+      - On reconnect, the server reconciles in-flight tasks: unacknowledged dispatches
+      are replayed, running tasks remain running until timeout or final agent report,
+      and stale socket messages are rejected.
+
+      - Messages that violate the allowed state transition are rejected with `agent_ws_error`.
+
+      - The agent must acknowledge before `ack_deadline_at`.
+
+      - The agent must finish before `run_deadline_at`, unless cancelled.
+
+      '
+    messages:
+      TaskDispatched:
+        $ref: '#/components/messages/TaskDispatched'
+      TaskCancelRequested:
+        $ref: '#/components/messages/TaskCancelRequested'
+      TaskAck:
+        $ref: '#/components/messages/TaskAck'
+      TaskResult:
+        $ref: '#/components/messages/TaskResult'
+      TaskCancelled:
+        $ref: '#/components/messages/TaskCancelled'
+      AgentWsError:
+        $ref: '#/components/messages/AgentWsError'
+  operatorEvents:
+    address: /ws/operator/events
+    title: Operator event stream
+    description: 'Authenticated operator event stream.
+
+
+      The server emits lifecycle events for agents, tasks, cancellations, token
+
+      changes, and audit-relevant state changes. Operators consume this stream
+
+      for dashboards, audit trails, and operational monitoring.
+
+
+      Replay is supported with a cursor at connection time. Retention is defined by
+      `x-operator-event-retention`. Expired cursors are rejected.
+
+      '
+    messages:
+      OperatorEvent:
+        $ref: '#/components/messages/OperatorEvent'
+operations:
+  receiveAgentTasks:
+    action: receive
+    channel:
+      $ref: '#/channels/agentTasks'
+    title: Agent receives task messages
+    summary: Server sends task dispatch, cancellation, and error messages to the authenticated
+      agent.
+    messages:
+    - $ref: '#/channels/agentTasks/messages/TaskDispatched'
+    - $ref: '#/channels/agentTasks/messages/TaskCancelRequested'
+    - $ref: '#/channels/agentTasks/messages/AgentWsError'
+  sendAgentTaskUpdates:
+    action: send
+    channel:
+      $ref: '#/channels/agentTasks'
+    title: Agent sends task updates
+    summary: Agent sends ack, final result, or cancellation completion messages.
+    messages:
+    - $ref: '#/channels/agentTasks/messages/TaskAck'
+    - $ref: '#/channels/agentTasks/messages/TaskResult'
+    - $ref: '#/channels/agentTasks/messages/TaskCancelled'
+  receiveOperatorEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/operatorEvents'
+    title: Operator receives events
+    summary: Server sends operator-visible lifecycle and audit events.
+    messages:
+    - $ref: '#/channels/operatorEvents/messages/OperatorEvent'
+components:
+  securitySchemes:
+    AgentBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Agent JWT. Required for `/ws/agent/tasks`.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Operator JWT issued by POST /api/v1/operator/login. Required for
+        `/ws/operator/events`. Registration tokens are not valid for WebSocket authentication.
+  messages:
+    TaskDispatched:
+      name: task_dispatched
+      title: Task dispatched
+      summary: Server assigns a task to the authenticated agent.
+      payload:
+        $ref: '#/components/schemas/TaskDispatchedPayload'
+      examples:
+      - name: whoamiTask
+        summary: Server dispatches an allowed task. No capability negotiation exists
+          in this protocol.
+        payload:
+          type: task_dispatched
+          task_id: task_abc123
+          task_type: whoami
+          payload: {}
+          dispatched_at: '2026-04-29T14:24:00Z'
+          ack_deadline_at: '2026-04-29T14:25:00Z'
+          run_deadline_at: '2026-04-29T14:34:00Z'
+      - name: shellExecuteTask
+        summary: Server dispatches a bounded shell_execute task from the shared allowed
+          task set.
+        payload:
+          type: task_dispatched
+          task_id: task_proc001
+          task_type: shell_execute
+          payload:
+            command: diagnostic_process_list
+            args:
+            - --limit
+            - '25'
+          dispatched_at: '2026-04-29T15:10:00Z'
+          ack_deadline_at: '2026-04-29T15:11:00Z'
+          run_deadline_at: '2026-04-29T15:15:00Z'
+    TaskCancelRequested:
+      name: task_cancel_requested
+      title: Task cancellation requested
+      summary: Server asks the agent to cooperatively cancel a running task.
+      payload:
+        $ref: '#/components/schemas/TaskCancelRequestedPayload'
+      examples:
+      - name: operatorCancellation
+        summary: Operator cancels a running task.
+        payload:
+          type: task_cancel_requested
+          task_id: task_long001
+          requested_at: '2026-04-29T14:27:00Z'
+          cancel_deadline_at: '2026-04-29T14:27:10Z'
+          reason: Operator requested cancellation
+      - name: timeoutCancellation
+        summary: Server requests cancellation because the task exceeded its deadline.
+        payload:
+          type: task_cancel_requested
+          task_id: task_slow001
+          requested_at: '2026-04-29T16:00:00Z'
+          cancel_deadline_at: '2026-04-29T16:00:10Z'
+          reason: Task exceeded run deadline
+    TaskAck:
+      name: task_ack
+      title: Task acknowledged
+      summary: Agent confirms it accepted and started a dispatched task.
+      payload:
+        $ref: '#/components/schemas/TaskAckPayload'
+      examples:
+      - name: ackCollectHostname
+        summary: Agent acknowledges it started the task.
+        payload:
+          type: task_ack
+          task_id: task_abc123
+          status: running
+          acknowledged_at: '2026-04-29T14:24:03Z'
+    TaskResult:
+      name: task_result
+      title: Task result
+      summary: Agent submits final task output.
+      payload:
+        $ref: '#/components/schemas/TaskResultPayload'
+      examples:
+      - name: completedHostnameResult
+        summary: Agent successfully completes a hostname collection task.
+        payload:
+          type: task_result
+          task_id: task_abc123
+          status: completed
+          exit_code: 0
+          stdout: win01
+          stderr: ''
+          completed_at: '2026-04-29T14:24:05Z'
+      - name: failedProcessListResult
+        summary: Agent reports a failed task.
+        payload:
+          type: task_result
+          task_id: task_proc001
+          status: failed
+          exit_code: 1
+          stdout: ''
+          stderr: Permission denied while reading process table
+          completed_at: '2026-04-29T15:10:07Z'
+    TaskCancelled:
+      name: task_cancelled
+      title: Task cancelled
+      summary: Agent confirms task cancellation and includes partial output only when
+        the agent submits partial output.
+      payload:
+        $ref: '#/components/schemas/TaskCancelledPayload'
+      examples:
+      - name: cancelledWithPartialOutput
+        summary: Agent stopped a long-running task and returned partial output.
+        payload:
+          type: task_cancelled
+          task_id: task_long001
+          status: cancelled
+          partial: true
+          stdout: processed 14 of 100 records before cancellation
+          stderr: ''
+          cancelled_at: '2026-04-29T14:27:04Z'
+      - name: cancelledNoOutput
+        summary: Agent cancelled before producing output.
+        payload:
+          type: task_cancelled
+          task_id: task_slow001
+          status: cancelled
+          partial: false
+          stdout: ''
+          stderr: ''
+          cancelled_at: '2026-04-29T16:00:05Z'
+    AgentWsError:
+      name: agent_ws_error
+      title: Agent WebSocket error
+      summary: Server reports a protocol or authorization error on the agent channel.
+      payload:
+        $ref: '#/components/schemas/AgentWsErrorPayload'
+      examples:
+      - name: invalidStateTransition
+        summary: Agent sent a result for a task that was not running.
+        payload:
+          type: agent_ws_error
+          code: CONFLICT
+          message: Invalid task state transition
+          task_id: task_abc123
+      - name: malformedMessage
+        summary: Server rejects a malformed agent message.
+        payload:
+          type: agent_ws_error
+          code: BAD_MESSAGE
+          message: Missing required field task_id
+          task_id: null
+    OperatorEvent:
+      name: operator_event
+      title: Operator event
+      summary: Server emits an operator-visible lifecycle event.
+      payload:
+        $ref: '#/components/schemas/OperatorEventPayload'
+      examples:
+      - name: agentRegisteredEvent
+        summary: Operator sees a new agent registration.
+        payload:
+          type: operator_event
+          id: event_001
+          cursor: evt_cursor_001
+          event_type: agent_registered
+          created_at: '2026-04-29T14:20:00Z'
+          data:
+            agent_id: agent_001
+            hostname: win01
+            os: windows
+            status: online
+      - name: taskCreatedEvent
+        summary: Operator sees task creation from REST API.
+        payload:
+          type: operator_event
+          id: event_002
+          cursor: evt_cursor_002
+          event_type: task_created
+          created_at: '2026-04-29T14:23:59Z'
+          data:
+            task_id: task_abc123
+            agent_id: agent_001
+            task_type: whoami
+            status: queued
+      - name: taskRunningEvent
+        summary: Operator sees that the agent acknowledged the task.
+        payload:
+          type: operator_event
+          id: event_003
+          cursor: evt_cursor_003
+          event_type: task_running
+          created_at: '2026-04-29T14:24:03Z'
+          data:
+            task_id: task_abc123
+            agent_id: agent_001
+            status: running
+      - name: taskCompletedEvent
+        summary: Operator sees task completion.
+        payload:
+          type: operator_event
+          id: event_004
+          cursor: evt_cursor_004
+          event_type: task_completed
+          created_at: '2026-04-29T14:24:05Z'
+          data:
+            task_id: task_abc123
+            agent_id: agent_001
+            status: completed
+            result_available: true
+      - name: taskCancelRequestedEvent
+        summary: Operator sees cancellation requested.
+        payload:
+          type: operator_event
+          id: event_005
+          cursor: evt_cursor_005
+          event_type: task_cancel_requested
+          created_at: '2026-04-29T14:27:00Z'
+          data:
+            task_id: task_long001
+            agent_id: agent_001
+            reason: Operator requested cancellation
+      - name: taskCancelledEvent
+        summary: Operator sees cancellation completed by the agent.
+        payload:
+          type: operator_event
+          id: event_006
+          cursor: evt_cursor_006
+          event_type: task_cancelled
+          created_at: '2026-04-29T14:27:04Z'
+          data:
+            task_id: task_long001
+            agent_id: agent_001
+            status: cancelled
+            partial_output_available: true
+  schemas:
+    MessageType:
+      type: string
+      enum:
+      - task_dispatched
+      - task_cancel_requested
+      - task_ack
+      - task_result
+      - task_cancelled
+      - agent_ws_error
+      - operator_event
+    TaskStatus:
+      type: string
+      enum:
+      - queued
+      - dispatched
+      - running
+      - completed
+      - failed
+      - cancellation_requested
+      - cancelled
+      - orphaned
+    TaskDispatchedPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - task_id
+      - task_type
+      - payload
+      - dispatched_at
+      - ack_deadline_at
+      properties:
+        type:
+          const: task_dispatched
+        task_id:
+          type: string
+          pattern: ^task_[A-Za-z0-9_-]{3,64}$
+          example: task_abc123
+        task_type:
+          $ref: '#/components/schemas/TaskCommand'
+        payload:
+          type: object
+          additionalProperties: true
+          example:
+            command: diagnostic_hostname
+            args: []
+          description: Payload accepted by REST task creation for the selected command.
+            whoami and uptime use an empty object. shell_execute uses command and
+            args validated by the server allowlist.
+        dispatched_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:24:00Z'
+        ack_deadline_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:25:00Z'
+        run_deadline_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:34:00Z'
+    TaskCancelRequestedPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - task_id
+      - requested_at
+      - cancel_deadline_at
+      properties:
+        type:
+          const: task_cancel_requested
+        task_id:
+          type: string
+          pattern: ^task_[A-Za-z0-9_-]{3,64}$
+          example: task_abc123
+        requested_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:27:00Z'
+        cancel_deadline_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:27:10Z'
+        reason:
+          type: string
+          maxLength: 500
+          example: Operator requested cancellation
+    TaskAckPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - task_id
+      - status
+      - acknowledged_at
+      properties:
+        type:
+          const: task_ack
+        task_id:
+          type: string
+          pattern: ^task_[A-Za-z0-9_-]{3,64}$
+          example: task_abc123
+        status:
+          const: running
+        acknowledged_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:24:03Z'
+    TaskResultPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - task_id
+      - status
+      - completed_at
+      properties:
+        type:
+          const: task_result
+        task_id:
+          type: string
+          pattern: ^task_[A-Za-z0-9_-]{3,64}$
+          example: task_abc123
+        status:
+          type: string
+          enum:
+          - completed
+          - failed
+        exit_code:
+          type:
+          - integer
+          - 'null'
+          example: 0
+        stdout:
+          type: string
+          maxLength: 1048576
+          example: win01
+        stderr:
+          type: string
+          maxLength: 1048576
+          example: ''
+        completed_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:24:05Z'
+    TaskCancelledPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - task_id
+      - status
+      - cancelled_at
+      - partial
+      properties:
+        type:
+          const: task_cancelled
+        task_id:
+          type: string
+          pattern: ^task_[A-Za-z0-9_-]{3,64}$
+          example: task_abc123
+        status:
+          const: cancelled
+        partial:
+          type: boolean
+          description: True when stdout/stderr contain partial output captured before
+            cancellation completed.
+          example: true
+        stdout:
+          type: string
+          maxLength: 1048576
+          example: processed 14 of 100 records before cancellation
+        stderr:
+          type: string
+          maxLength: 1048576
+          example: ''
+        cancelled_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:27:04Z'
+    AgentWsErrorPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - code
+      - message
+      properties:
+        type:
+          const: agent_ws_error
+        code:
+          type: string
+          enum:
+          - BAD_MESSAGE
+          - UNAUTHORIZED
+          - FORBIDDEN
+          - CONFLICT
+          - INTERNAL_ERROR
+        message:
+          type: string
+          example: Invalid task state transition
+        task_id:
+          type:
+          - string
+          - 'null'
+          example: task_abc123
+    OperatorEventPayload:
+      type: object
+      additionalProperties: false
+      required:
+      - type
+      - id
+      - cursor
+      - event_type
+      - created_at
+      - data
+      properties:
+        type:
+          const: operator_event
+        id:
+          type: string
+          example: event_001
+        cursor:
+          type: string
+          example: evt_cursor_abc123
+        event_type:
+          type: string
+          enum:
+          - agent_registered
+          - agent_token_refreshed
+          - agent_refresh_token_revoked
+          - agent_heartbeat
+          - agent_decommissioned
+          - task_created
+          - task_dispatched
+          - task_running
+          - task_completed
+          - task_failed
+          - task_cancel_requested
+          - task_cancelled
+          - task_orphaned
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-04-29T14:24:03Z'
+        data:
+          type: object
+          additionalProperties: true
+          example:
+            task_id: task_abc123
+            agent_id: agent_001
+            status: completed
+    TaskCommand:
+      type: string
+      enum:
+      - whoami
+      - uptime
+      - shell_execute
+      description: The complete set of supported task commands. No other command identifiers
+        are valid.
+x-websocket-connection-rules:
+  single_active_connection_per_agent: true
+  duplicate_connection_behavior: reject_or_replace_atomically
+  stale_socket_behavior: reject_messages_after_replacement
+  reconnect_reconciliation:
+    unacknowledged_dispatches: replayed
+    running_tasks: remain_running_until_timeout_or_final_report
+    duplicate_terminal_reports: ignored_after_first_accepted_report
+  message_idempotency_key: task_id
+  no_redaction: stdout/stderr are passed through unchanged; no redaction fields are
+    present in WebSocket payloads.
+x-task-command-allowlist:
+  supported_commands:
+  - whoami
+  - uptime
+  - shell_execute
+  purpose: The server command allowlist is the only execution control. Approvals,
+    sandboxing, capability negotiation, policies, and redaction do not exist in this
+    protocol.
+  whoami: Returns the operating-system user identity for the agent process. Payload
+    MUST be an empty object.
+  uptime: Returns host uptime as reported by the agent operating system. Payload MUST
+    be an empty object.
+  shell_execute: Executes a command identifier and arguments only when the command
+    identifier and argument shape match the configured server allowlist. The payload
+    command field is not a raw shell command line.
+  enforcement: REST validates task type, command identifier, and argument shape before
+    task creation succeeds. Non-matching requests return 422 and are not dispatched.
+  execution: A created task is eligible for dispatch immediately. It runs unless cancelled,
+    orphaned by lifecycle timeout, or failed by the agent.
+  websocket_boundary: WebSocket messages do not carry approval, sandbox, policy, or
+    redaction fields.
+x-architecture-examples:
+  happy_path:
+  - actor: operator
+    transport: REST
+    action: Creates task for agent_001 using POST /api/v1/agents/{agent_id}/tasks.
+  - actor: server
+    transport: WebSocket /ws/operator/events
+    message: operator_event task_created
+  - actor: server
+    transport: WebSocket /ws/agent/tasks
+    message: task_dispatched
+  - actor: agent
+    transport: WebSocket /ws/agent/tasks
+    message: task_ack
+  - actor: server
+    transport: WebSocket /ws/operator/events
+    message: operator_event task_running
+  - actor: agent
+    transport: WebSocket /ws/agent/tasks
+    message: task_result completed
+  - actor: server
+    transport: WebSocket /ws/operator/events
+    message: operator_event task_completed
+  cancellation_path:
+  - actor: operator
+    transport: REST
+    action: Cancels task using POST /api/v1/tasks/{task_id}/cancel.
+  - actor: server
+    transport: WebSocket /ws/agent/tasks
+    message: task_cancel_requested
+  - actor: agent
+    transport: WebSocket /ws/agent/tasks
+    message: task_cancelled with partial output only when submitted by the agent
+  - actor: server
+    transport: WebSocket /ws/operator/events
+    message: operator_event task_cancelled
+  failure_path:
+  - actor: agent
+    transport: WebSocket /ws/agent/tasks
+    message: task_result failed
+  - actor: server
+    transport: WebSocket /ws/operator/events
+    message: operator_event task_failed
+x-contract-boundaries:
+  approval: The protocol does not implement approval. A valid created task is eligible
+    for dispatch without approval.
+  sandboxing: The protocol does not implement sandboxing.
+  policies: The protocol does not implement policy objects or policy evaluation.
+  capabilities: The protocol does not implement capability negotiation. The server
+    command allowlist is authoritative.
+  redaction: The protocol does not implement output redaction. Results are stored
+    as submitted subject to size limits.
+x-operator-event-retention:
+  retention_seconds: 86400
+  expired_cursor_close_code: 4404
+  expired_cursor_reason: cursor_expired
+x-task-history:
+  source_of_truth: REST is the source of truth for persisted task history.
+  recording: The server creates a history entry when task creation succeeds and updates
+    it as WebSocket execution events arrive.
+  retrieval: Operators retrieve task history through GET /api/v1/task-history in the
+    REST API.
+  websocket_boundary: The WebSocket protocol reports execution state; it does not
+    provide a history query channel.
+  result_normalization: All WebSocket terminal events (task_result and task_cancelled)
+    are normalized into the single REST task result record returned by GET /api/v1/tasks/{task_id}/result.
+x-agent-registration:
+  authentication: none
+  authorization: none
+  registration_token: none
+  boundary: Any client that can reach POST /api/v1/agent/register and submits a valid
+    payload can register an agent and receive agent credentials. Network reachability
+    is the only registration boundary.
+  duplicates: The server must reject duplicate agent identities.
+x-operator-authentication:
+  registration_token_provisioning: Operator registration tokens are provisioned outside
+    the API. The API has no operation for creating or retrieving registration tokens.
+  registration: An operator registers through the REST API using one valid out-of-band
+    registration token.
+  login: An operator logs in through the REST API and receives an Operator JWT.
+  websocket_access: Operator WebSocket event streams require a valid Operator JWT
+    using BearerAuth.
+  token_boundary: Registration tokens are never sent over WebSocket and are never
+    emitted in operator events.
+x-supported-commands:
+  commands:
+  - whoami
+  - uptime
+  - shell_execute
+  rule: The server must reject every command outside this list before dispatch.
+x-agent-websocket-rules:
+  single_connection: The server must not maintain more than one active WebSocket connection
+    for the same agent identity.
+  duplicate_connection: When a duplicate authenticated connection is opened for the
+    same agent identity, the server must either reject the new connection or terminate
+    the previous connection before accepting the new one. Both connections must never
+    remain active.
+  message_ownership: The server must accept task ack, running, result, and cancelled
+    messages only from the authenticated agent that owns the task.
+  stale_messages: The server must reject messages for unknown tasks, terminal tasks,
+    or tasks assigned to another agent.
+  ordering: The server must apply task lifecycle transitions in order and must reject
+    invalid transitions.
