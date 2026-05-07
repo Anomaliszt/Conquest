@@ -3,6 +3,7 @@ from api.app.db.sqlite import get_connection
 
 
 def create_operator(operator_id, username, password_hash, status, created_at):
+    """Creates a new operator in the database."""
     conn = get_connection()
 
     try:
@@ -21,6 +22,7 @@ def create_operator(operator_id, username, password_hash, status, created_at):
 
 
 def get_operator_by_username(username):
+    """Retrieves an operator by their username."""
     conn = get_connection()
 
     try:

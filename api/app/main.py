@@ -1,9 +1,12 @@
 from flask import Flask, jsonify
 from api.app.api.v1.health import health_bp
 from api.app.api.v1.operator_auth import operator_auth_bp
+from api.app.exceptions import register_error_handlers
+
 
 def create_app():
     app = Flask(__name__)
+    register_error_handlers(app)
 
     @app.get("/")
     def home():

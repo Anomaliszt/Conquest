@@ -8,6 +8,7 @@ def _hash_token(raw_token):
 
 
 def _insert_registration_token(conn, raw_token, expires_at=None, used=0):
+    """Inserts a registration token into the database."""
     conn.execute(
         """
         INSERT INTO operator_registration_tokens
@@ -25,6 +26,7 @@ def _insert_registration_token(conn, raw_token, expires_at=None, used=0):
 
 
 def _insert_operator(conn, username, password, status="active"):
+    """Inserts an operator into the database."""
     conn.execute(
         """
         INSERT INTO operators
@@ -43,6 +45,7 @@ def _insert_operator(conn, username, password, status="active"):
 
 
 def test_register_operator_success_matches_contract(client, db_connection):
+    """Tests that the /api/v1/operator/register endpoint successfully registers an operator and that the response matches the expected contract."""
     registration_token = "a" * 32
     _insert_registration_token(db_connection, registration_token)
 
@@ -80,10 +83,26 @@ def test_register_operator_success_matches_contract(client, db_connection):
 
 
 def test_register_operator_rejects_missing_body_fields(client):
+    """"Tests that the /api/v1/operator/register endpoint rejects requests with missing required fields."""
     response = client.post("/api/v1/operator/register", json={})
 
     assert response.status_code == 400
-    assert response.get_json() == {"error": "registration_token is required"}
+    body = response.get_json()
+    
+    # Check contract-compliant error response structure
+    assert "request_id" in body
+    assert body["request_id"]
+    assert "error" in body
+    
+    error = body["error"]
+    assert error["code"] == "BAD_REQUEST"
+    assert error["message"] == "Invalid request payload"
+    assert "details" in error
+    
+    # Check that all required fields are mentioned in the validation errors
+    required_fields = {"registration_token", "username", "password"}
+    error_fields = {detail["field"] for detail in error["details"]}
+    assert required_fields.issubset(error_fields)
 
 
 def test_register_operator_rejects_invalid_token(client):
@@ -97,7 +116,10 @@ def test_register_operator_rejects_invalid_token(client):
     )
 
     assert response.status_code == 401
-    assert response.get_json() == {"error": "invalid registration token"}
+    body = response.get_json()
+    assert "request_id" in body
+    assert body["error"]["code"] == "UNAUTHORIZED"
+    assert body["error"]["message"] == "invalid registration token"
 
 
 def test_register_operator_rejects_reused_token(client, db_connection):
@@ -114,7 +136,10 @@ def test_register_operator_rejects_reused_token(client, db_connection):
     )
 
     assert response.status_code == 401
-    assert response.get_json() == {"error": "registration token already used"}
+    body = response.get_json()
+    assert "request_id" in body
+    assert body["error"]["code"] == "UNAUTHORIZED"
+    assert body["error"]["message"] == "registration token already used"
 
 
 def test_register_operator_rejects_duplicate_username(client, db_connection):
@@ -132,7 +157,10 @@ def test_register_operator_rejects_duplicate_username(client, db_connection):
     )
 
     assert response.status_code == 409
-    assert response.get_json() == {"error": "username already exists"}
+    body = response.get_json()
+    assert "request_id" in body
+    assert body["error"]["code"] == "CONFLICT"
+    assert body["error"]["message"] == "username already exists"
 
 
 def test_login_operator_success_matches_contract(client, db_connection):
@@ -171,7 +199,10 @@ def test_login_operator_rejects_invalid_credentials(client, db_connection):
     )
 
     assert response.status_code == 401
-    assert response.get_json() == {"error": "invalid username or password"}
+    body = response.get_json()
+    assert "request_id" in body
+    assert body["error"]["code"] == "UNAUTHORIZED"
+    assert body["error"]["message"] == "invalid username or password"
 
 
 def test_login_operator_rejects_disabled_operator(client, db_connection):
@@ -191,4 +222,7 @@ def test_login_operator_rejects_disabled_operator(client, db_connection):
     )
 
     assert response.status_code == 401
-    assert response.get_json() == {"error": "operator account is disabled"}
+    body = response.get_json()
+    assert "request_id" in body
+    assert body["error"]["code"] == "UNAUTHORIZED"
+    assert body["error"]["message"] == "operator account is disabled"

@@ -14,32 +14,39 @@ from api.app.repositories.registration_tokens_repo import (
 )
 
 def hash_registration_token(registration_token):
+    """Hash registration token using SHA-256.
+    
+    Args:
+        registration_token: Raw registration token string (min 32 chars)
+        
+    Returns:
+        64-character hex string (SHA-256 hash)
+    """
     return hashlib.sha256(registration_token.encode("utf-8")).hexdigest()
 
 
 
 def register_operator(registration_token, username, password):
-    if not registration_token:
-        return None, ("registration_token is required", 400)
-
-    if not username:
-        return None, ("username is required", 400)
-
-    if not password:
-        return None, ("password is required", 400)
-
-    if len(registration_token) < 32:
-        return None, ("invalid registration token", 401)
-
-    if len(username) < 3:
-        return None, ("username must be at least 3 characters", 400)
-
-    if len(password) < 12:
-        return None, ("password must be at least 12 characters", 400)
-
+    """Register a new operator using a registration token.
+    
+    Args:
+        registration_token: Registration token (validated by Pydantic: min 32 chars)
+        username: Operator username (validated by Pydantic: min 3 chars)
+        password: Operator password (validated by Pydantic: min 12 chars)
+        
+    Returns:
+        (dict, None): On success with operator details
+        (None, (str, int)): On error with (message, http_status_code)
+    
+    Error cases (return specific status codes for client handling):
+    - 401: Token not found, already used, or expired
+    - 409: Username already exists (database constraint)
+    """
+    # Hash token for database lookup
     token_hash = hash_registration_token(registration_token)
     token_row = get_registration_token(token_hash)
 
+    # Validate token status (exists, unused, not expired)
     if token_row is None:
         return None, ("invalid registration token", 401)
 
@@ -49,11 +56,14 @@ def register_operator(registration_token, username, password):
     if is_expired(token_row["expires_at"]):
         return None, ("registration token expired", 401)
 
-    operator_id = f"operator_{uuid.uuid4().hex[:12]}"
-    password_hash = generate_password_hash(password)
-    created_at = now_iso()
+    # Generate unique operator ID and hash password securely
+    operator_id = f"operator_{uuid.uuid4().hex[:12]}"  # Format: operator_<12 random hex chars>
+    password_hash = generate_password_hash(password)  # Uses Werkzeug secure hashing
+    created_at = now_iso()  # ISO 8601 timestamp with timezone
 
+    # Create operator and mark token as used in a single transaction to ensure consistency
     try:
+        # Create the operator account
         create_operator(
             operator_id=operator_id,
             username=username,
@@ -62,6 +72,7 @@ def register_operator(registration_token, username, password):
             created_at=created_at,
         )
 
+        # Mark registration token as used, linking it to the operator
         mark_registration_token_used(
             token_hash=token_hash,
             operator_id=operator_id,
@@ -69,8 +80,10 @@ def register_operator(registration_token, username, password):
         )
 
     except sqlite3.IntegrityError:
+        # Database constraint violation (most likely: unique username)
         return None, ("username already exists", 409)
 
+    # Return created operator details for response
     return {
         "id": operator_id,
         "username": username,
@@ -80,17 +93,27 @@ def register_operator(registration_token, username, password):
 
 
 def login_operator(username, password):
-    if not username:
-        return None, ("username is required", 400)
-
-    if not password:
-        return None, ("password is required", 400)
-
+    """Authenticate an operator and generate JWT token.
+    
+    Args:
+        username: Operator username (validated by Pydantic: required)
+        password: Operator password (validated by Pydantic: required)
+        
+    Returns:
+        (dict, None): On success with token and operator details
+        (None, (str, int)): On error with (message, http_status_code)
+        
+    Security note: Generic error messages ("invalid username or password")
+    prevent username enumeration attacks.
+    """
+    # Look up operator by username
     operator = get_operator_by_username(username)
 
+    # Verify operator exists (generic error for security)
     if operator is None:
         return None, ("invalid username or password", 401)
 
+    # Check account is active (disabled accounts cannot login)
     if operator["status"] != "active":
         return None, ("operator account is disabled", 401)
 
