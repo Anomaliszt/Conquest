@@ -2,6 +2,7 @@ from api.app.db.sqlite import get_connection
 
 
 def get_registration_token(token_hash):
+    """Retrieves a registration token by its hash."""
     conn = get_connection()
 
     try:
@@ -18,6 +19,7 @@ def get_registration_token(token_hash):
 
 
 def mark_registration_token_used(token_hash, operator_id, used_at):
+    """Marks a registration token as used by an operator."""
     conn = get_connection()
 
     try:

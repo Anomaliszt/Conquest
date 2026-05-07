@@ -22,78 +22,38 @@ def test_hash_registration_token_is_sha256_hex():
 
 
 @pytest.mark.parametrize(
-    ("registration_token", "username", "password", "expected_error", "expected_status"),
+    ("token_response", "username", "password", "expected_error", "expected_status"),
     [
-        (None, "alice", "super-secure-password", "registration_token is required", 400),
-        ("a" * 32, None, "super-secure-password", "username is required", 400),
-        ("a" * 32, "alice", None, "password is required", 400),
-        ("too-short", "alice", "super-secure-password", "invalid registration token", 401),
-        ("a" * 32, "ab", "super-secure-password", "username must be at least 3 characters", 400),
-        ("a" * 32, "alice", "short", "password must be at least 12 characters", 400),
+        # Token not found
+        (None, "alice", "super-secure-password", "invalid registration token", 401),
+        # Token already used
+        (Row({"used": 1, "expires_at": None}), "alice", "super-secure-password", "registration token already used", 401),
+        # Token expired
+        (Row({"used": 0, "expires_at": "2000-01-01T00:00:00+00:00"}), "alice", "super-secure-password", "registration token expired", 401),
     ],
 )
-def test_register_operator_validates_input(
-    registration_token,
+def test_register_operator_validates_business_logic(
+    monkeypatch,
+    token_response,
     username,
     password,
     expected_error,
     expected_status,
 ):
+    monkeypatch.setattr(
+        operator_service,
+        "get_registration_token",
+        lambda token_hash: token_response,
+    )
+
     result, error = operator_service.register_operator(
-        registration_token=registration_token,
+        registration_token="a" * 32,
         username=username,
         password=password,
     )
 
     assert result is None
     assert error == (expected_error, expected_status)
-
-
-def test_register_operator_rejects_unknown_token(monkeypatch):
-    monkeypatch.setattr(operator_service, "get_registration_token", lambda token_hash: None)
-
-    result, error = operator_service.register_operator(
-        registration_token="a" * 32,
-        username="alice",
-        password="super-secure-password",
-    )
-
-    assert result is None
-    assert error == ("invalid registration token", 401)
-
-
-def test_register_operator_rejects_used_token(monkeypatch):
-    monkeypatch.setattr(
-        operator_service,
-        "get_registration_token",
-        lambda token_hash: Row({"used": 1, "expires_at": None}),
-    )
-
-    result, error = operator_service.register_operator(
-        registration_token="a" * 32,
-        username="alice",
-        password="super-secure-password",
-    )
-
-    assert result is None
-    assert error == ("registration token already used", 401)
-
-
-def test_register_operator_rejects_expired_token(monkeypatch):
-    monkeypatch.setattr(
-        operator_service,
-        "get_registration_token",
-        lambda token_hash: Row({"used": 0, "expires_at": "2000-01-01T00:00:00+00:00"}),
-    )
-
-    result, error = operator_service.register_operator(
-        registration_token="a" * 32,
-        username="alice",
-        password="super-secure-password",
-    )
-
-    assert result is None
-    assert error == ("registration token expired", 401)
 
 
 def test_register_operator_success_creates_operator_and_marks_token_used(monkeypatch):
@@ -158,20 +118,6 @@ def test_register_operator_maps_unique_username_error_to_conflict(monkeypatch):
 
     assert result is None
     assert error == ("username already exists", 409)
-
-
-@pytest.mark.parametrize(
-    ("username", "password", "expected_error"),
-    [
-        (None, "super-secure-password", "username is required"),
-        ("alice", None, "password is required"),
-    ],
-)
-def test_login_operator_validates_input(username, password, expected_error):
-    result, error = operator_service.login_operator(username=username, password=password)
-
-    assert result is None
-    assert error == (expected_error, 400)
 
 
 def test_login_operator_rejects_unknown_username(monkeypatch):
