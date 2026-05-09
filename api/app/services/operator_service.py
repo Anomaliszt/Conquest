@@ -1,6 +1,6 @@
 import hashlib
-import sqlite3
 import uuid
+from sqlalchemy.exc import IntegrityError
 from api.app.utils.time import now_iso, is_expired
 from api.app.core.jwt import create_operator_token
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -50,10 +50,10 @@ def register_operator(registration_token, username, password):
     if token_row is None:
         return None, ("invalid registration token", 401)
 
-    if token_row["used"] == 1:
+    if token_row.used == 1:
         return None, ("registration token already used", 401)
 
-    if is_expired(token_row["expires_at"]):
+    if is_expired(token_row.expires_at):
         return None, ("registration token expired", 401)
 
     # Generate unique operator ID and hash password securely
@@ -79,7 +79,7 @@ def register_operator(registration_token, username, password):
             used_at=created_at,
         )
 
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         # Database constraint violation (most likely: unique username)
         return None, ("username already exists", 409)
 
@@ -114,15 +114,15 @@ def login_operator(username, password):
         return None, ("invalid username or password", 401)
 
     # Check account is active (disabled accounts cannot login)
-    if operator["status"] != "active":
+    if operator.status != "active":
         return None, ("operator account is disabled", 401)
 
-    if not check_password_hash(operator["password_hash"], password):
+    if not check_password_hash(operator.password_hash, password):
         return None, ("invalid username or password", 401)
 
     return {
-        "operator_id": operator["id"],
-        "operator_token": create_operator_token(operator["id"]),
+        "operator_id": operator.id,
+        "operator_token": create_operator_token(operator.id),
         "token_type": "Bearer",
         "expires_in": 900,
     }, None
