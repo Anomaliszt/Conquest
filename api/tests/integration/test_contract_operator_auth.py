@@ -2,52 +2,42 @@ import hashlib
 
 from werkzeug.security import generate_password_hash
 
+from api.app.models import Operator, RegistrationToken
+
 
 def _hash_token(raw_token):
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
-def _insert_registration_token(conn, raw_token, expires_at=None, used=0):
+def _insert_registration_token(session, raw_token, expires_at=None, used=0):
     """Inserts a registration token into the database."""
-    conn.execute(
-        """
-        INSERT INTO operator_registration_tokens
-            (token_hash, used, expires_at, created_at)
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            _hash_token(raw_token),
-            used,
-            expires_at,
-            "2026-01-01T00:00:00+00:00",
-        ),
+    token = RegistrationToken(
+        token_hash=_hash_token(raw_token),
+        used=used,
+        expires_at=expires_at,
+        created_at="2026-01-01T00:00:00+00:00",
     )
-    conn.commit()
+    session.add(token)
+    session.commit()
 
 
-def _insert_operator(conn, username, password, status="active"):
+def _insert_operator(session, username, password, status="active"):
     """Inserts an operator into the database."""
-    conn.execute(
-        """
-        INSERT INTO operators
-            (id, username, password_hash, status, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        """,
-        (
-            f"operator_{username}",
-            username,
-            generate_password_hash(password),
-            status,
-            "2026-01-01T00:00:00+00:00",
-        ),
+    operator = Operator(
+        id=f"operator_{username}",
+        username=username,
+        password_hash=generate_password_hash(password),
+        status=status,
+        created_at="2026-01-01T00:00:00+00:00",
     )
-    conn.commit()
+    session.add(operator)
+    session.commit()
 
 
-def test_register_operator_success_matches_contract(client, db_connection):
+def test_register_operator_success_matches_contract(client, db_session):
     """Tests that the /api/v1/operator/register endpoint successfully registers an operator and that the response matches the expected contract."""
     registration_token = "a" * 32
-    _insert_registration_token(db_connection, registration_token)
+    _insert_registration_token(db_session, registration_token)
 
     response = client.post(
         "/api/v1/operator/register",
@@ -69,17 +59,12 @@ def test_register_operator_success_matches_contract(client, db_connection):
     assert data["status"] == "active"
     assert "created_at" in data
 
-    token_row = db_connection.execute(
-        """
-        SELECT used, used_by_operator_id
-        FROM operator_registration_tokens
-        WHERE token_hash = ?
-        """,
-        (_hash_token(registration_token),),
-    ).fetchone()
+    token_row = db_session.query(RegistrationToken).filter(
+        RegistrationToken.token_hash == _hash_token(registration_token)
+    ).first()
 
-    assert token_row["used"] == 1
-    assert token_row["used_by_operator_id"] == data["id"]
+    assert token_row.used == 1
+    assert token_row.used_by_operator_id == data["id"]
 
 
 def test_register_operator_rejects_missing_body_fields(client):
@@ -122,9 +107,9 @@ def test_register_operator_rejects_invalid_token(client):
     assert body["error"]["message"] == "invalid registration token"
 
 
-def test_register_operator_rejects_reused_token(client, db_connection):
+def test_register_operator_rejects_reused_token(client, db_session):
     registration_token = "b" * 32
-    _insert_registration_token(db_connection, registration_token, used=1)
+    _insert_registration_token(db_session, registration_token, used=1)
 
     response = client.post(
         "/api/v1/operator/register",
@@ -142,10 +127,10 @@ def test_register_operator_rejects_reused_token(client, db_connection):
     assert body["error"]["message"] == "registration token already used"
 
 
-def test_register_operator_rejects_duplicate_username(client, db_connection):
+def test_register_operator_rejects_duplicate_username(client, db_session):
     registration_token = "c" * 32
-    _insert_registration_token(db_connection, registration_token)
-    _insert_operator(db_connection, "alice", "super-secure-password")
+    _insert_registration_token(db_session, registration_token)
+    _insert_operator(db_session, "alice", "super-secure-password")
 
     response = client.post(
         "/api/v1/operator/register",
@@ -163,8 +148,8 @@ def test_register_operator_rejects_duplicate_username(client, db_connection):
     assert body["error"]["message"] == "username already exists"
 
 
-def test_login_operator_success_matches_contract(client, db_connection):
-    _insert_operator(db_connection, "alice", "super-secure-password")
+def test_login_operator_success_matches_contract(client, db_session):
+    _insert_operator(db_session, "alice", "super-secure-password")
 
     response = client.post(
         "/api/v1/operator/login",
@@ -187,8 +172,8 @@ def test_login_operator_success_matches_contract(client, db_connection):
     assert data["operator_token"]
 
 
-def test_login_operator_rejects_invalid_credentials(client, db_connection):
-    _insert_operator(db_connection, "alice", "super-secure-password")
+def test_login_operator_rejects_invalid_credentials(client, db_session):
+    _insert_operator(db_session, "alice", "super-secure-password")
 
     response = client.post(
         "/api/v1/operator/login",
@@ -205,9 +190,9 @@ def test_login_operator_rejects_invalid_credentials(client, db_connection):
     assert body["error"]["message"] == "invalid username or password"
 
 
-def test_login_operator_rejects_disabled_operator(client, db_connection):
+def test_login_operator_rejects_disabled_operator(client, db_session):
     _insert_operator(
-        db_connection,
+        db_session,
         "alice",
         "super-secure-password",
         status="disabled",
