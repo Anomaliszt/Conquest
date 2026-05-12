@@ -51,8 +51,10 @@ def db_session(temp_database):
 
 @pytest.fixture(autouse=True)
 def clean_tables(db_session):
-    from api.app.models import Operator, RegistrationToken
+    from api.app.models import Operator, RegistrationToken, Task, Agent
 
+    db_session.query(Task).delete()
+    db_session.query(Agent).delete()
     db_session.query(RegistrationToken).delete()
     db_session.query(Operator).delete()
     db_session.commit()
