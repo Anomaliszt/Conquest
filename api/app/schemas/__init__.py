@@ -23,6 +23,20 @@ from .errors import (
     ErrorDetail,
     ValidationErrorDetail,
 )
+from .task import (
+    CreateTaskRequest,
+    Task,
+    TaskResponse,
+    TaskListResponse,
+    CancelTaskRequest,
+    CancelTaskResponse,
+    TaskResult,
+    TaskResultResponse,
+    SendAllTasksRequest,
+    SendAllTasksResponse,
+    TaskHistoryEntry,
+    TaskHistoryListResponse,
+)
 
 __all__ = [
     "RegisterOperatorRequest",
@@ -42,4 +56,16 @@ __all__ = [
     "ErrorResponse",
     "ErrorDetail",
     "ValidationErrorDetail",
+    "CreateTaskRequest",
+    "Task",
+    "TaskResponse",
+    "TaskListResponse",
+    "CancelTaskRequest",
+    "CancelTaskResponse",
+    "TaskResult",
+    "TaskResultResponse",
+    "SendAllTasksRequest",
+    "SendAllTasksResponse",
+    "TaskHistoryEntry",
+    "TaskHistoryListResponse",
 ]
