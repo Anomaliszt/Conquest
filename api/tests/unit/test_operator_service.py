@@ -1,14 +1,21 @@
-import sqlite3
-
 import pytest
 from werkzeug.security import generate_password_hash
 
 from api.app.services import operator_service
 
 
-class Row(dict):
-    def __getitem__(self, key):
-        return dict.__getitem__(self, key)
+class MockToken:
+    def __init__(self, used, expires_at):
+        self.used = used
+        self.expires_at = expires_at
+
+
+class MockOperator:
+    def __init__(self, id, username, password_hash, status):
+        self.id = id
+        self.username = username
+        self.password_hash = password_hash
+        self.status = status
 
 
 def test_hash_registration_token_is_sha256_hex():
@@ -27,9 +34,9 @@ def test_hash_registration_token_is_sha256_hex():
         # Token not found
         (None, "alice", "super-secure-password", "invalid registration token", 401),
         # Token already used
-        (Row({"used": 1, "expires_at": None}), "alice", "super-secure-password", "registration token already used", 401),
+        (MockToken(used=1, expires_at=None), "alice", "super-secure-password", "registration token already used", 401),
         # Token expired
-        (Row({"used": 0, "expires_at": "2000-01-01T00:00:00+00:00"}), "alice", "super-secure-password", "registration token expired", 401),
+        (MockToken(used=0, expires_at="2000-01-01T00:00:00+00:00"), "alice", "super-secure-password", "registration token expired", 401),
     ],
 )
 def test_register_operator_validates_business_logic(
@@ -63,7 +70,7 @@ def test_register_operator_success_creates_operator_and_marks_token_used(monkeyp
     monkeypatch.setattr(
         operator_service,
         "get_registration_token",
-        lambda token_hash: Row({"used": 0, "expires_at": None}),
+        lambda token_hash: MockToken(used=0, expires_at=None),
     )
     monkeypatch.setattr(operator_service, "now_iso", lambda: "2026-01-01T00:00:00+00:00")
 
@@ -102,11 +109,12 @@ def test_register_operator_maps_unique_username_error_to_conflict(monkeypatch):
     monkeypatch.setattr(
         operator_service,
         "get_registration_token",
-        lambda token_hash: Row({"used": 0, "expires_at": None}),
+        lambda token_hash: MockToken(used=0, expires_at=None),
     )
 
     def raise_integrity_error(**kwargs):
-        raise sqlite3.IntegrityError()
+        from sqlalchemy.exc import IntegrityError
+        raise IntegrityError(None, None, None)
 
     monkeypatch.setattr(operator_service, "create_operator", raise_integrity_error)
 
@@ -136,13 +144,11 @@ def test_login_operator_rejects_disabled_operator(monkeypatch):
     monkeypatch.setattr(
         operator_service,
         "get_operator_by_username",
-        lambda username: Row(
-            {
-                "id": "operator_1",
-                "username": username,
-                "password_hash": generate_password_hash("super-secure-password"),
-                "status": "disabled",
-            }
+        lambda username: MockOperator(
+            id="operator_1",
+            username=username,
+            password_hash=generate_password_hash("super-secure-password"),
+            status="disabled",
         ),
     )
 
@@ -159,13 +165,11 @@ def test_login_operator_rejects_wrong_password(monkeypatch):
     monkeypatch.setattr(
         operator_service,
         "get_operator_by_username",
-        lambda username: Row(
-            {
-                "id": "operator_1",
-                "username": username,
-                "password_hash": generate_password_hash("super-secure-password"),
-                "status": "active",
-            }
+        lambda username: MockOperator(
+            id="operator_1",
+            username=username,
+            password_hash=generate_password_hash("super-secure-password"),
+            status="active",
         ),
     )
 
@@ -182,13 +186,11 @@ def test_login_operator_success_returns_bearer_token(monkeypatch):
     monkeypatch.setattr(
         operator_service,
         "get_operator_by_username",
-        lambda username: Row(
-            {
-                "id": "operator_1",
-                "username": username,
-                "password_hash": generate_password_hash("super-secure-password"),
-                "status": "active",
-            }
+        lambda username: MockOperator(
+            id="operator_1",
+            username=username,
+            password_hash=generate_password_hash("super-secure-password"),
+            status="active",
         ),
     )
     monkeypatch.setattr(operator_service, "create_operator_token", lambda operator_id: "jwt-token")

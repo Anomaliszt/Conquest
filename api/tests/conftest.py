@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -14,15 +13,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 @pytest.fixture()
 def temp_database(tmp_path, monkeypatch):
     db_path = tmp_path / "test_conquest.sqlite3"
-    schema_path = API_DIR / "app" / "db" / "schema.sql"
 
-    conn = sqlite3.connect(db_path)
-    with open(schema_path, "r", encoding="utf-8") as schema_file:
-        conn.executescript(schema_file.read())
-    conn.commit()
-    conn.close()
+    monkeypatch.setattr("api.app.config.DATABASE_PATH", str(db_path))
 
-    monkeypatch.setattr("api.app.db.sqlite.DATABASE_PATH", str(db_path))
+    from api.app.db.database import engine
+    from api.app.models import Base
+    Base.metadata.create_all(bind=engine)
 
     return db_path
 
@@ -43,11 +39,23 @@ def client(app):
 
 
 @pytest.fixture()
-def db_connection(temp_database):
-    conn = sqlite3.connect(temp_database)
-    conn.row_factory = sqlite3.Row
+def db_session(temp_database):
+    from api.app.db import SessionLocal
 
+    session = SessionLocal()
     try:
-        yield conn
+        yield session
     finally:
-        conn.close()
+        session.close()
+
+
+@pytest.fixture(autouse=True)
+def clean_tables(db_session):
+    from api.app.models import Operator, RegistrationToken, Task, Agent
+
+    db_session.query(Task).delete()
+    db_session.query(Agent).delete()
+    db_session.query(RegistrationToken).delete()
+    db_session.query(Operator).delete()
+    db_session.commit()
+    yield
