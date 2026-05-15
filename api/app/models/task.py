@@ -19,6 +19,7 @@ class Task(Base):
     updated_at = Column(String, nullable=False)
     dispatched_at = Column(String, nullable=True)
     ack_deadline_at = Column(String, nullable=True)
+    run_deadline_at = Column(String, nullable=True)
     started_at = Column(String, nullable=True)
     completed_at = Column(String, nullable=True)
     cancel_requested_at = Column(String, nullable=True)

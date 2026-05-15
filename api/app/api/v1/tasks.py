@@ -21,6 +21,10 @@ from api.app.services.tasks_service import (
     get_result,
 )
 from api.app.repositories.agents_repo import list_agents
+from api.app.ws import socketio
+from api.app.ws.events import emit_operator_event
+from api.app.repositories.tasks_repo import update_task_status
+from api.app.utils.time import now_iso
 
 tasks_bp = Blueprint("tasks", __name__)
 
@@ -47,6 +51,13 @@ def create_task_route(agent_id, operator_id):
             message=message,
             status=status_code,
         )
+
+    emit_operator_event(socketio, "task_created", {
+        "task_id": task.id,
+        "agent_id": agent_id,
+        "task_type": task.type,
+        "status": task.status,
+    })
 
     return {"data": _task_to_dict(task)}, 201
 
@@ -119,6 +130,27 @@ def cancel_task_route(task_id, operator_id):
             message=message,
             status=status_code,
         )
+
+    if result.status == "cancellation_requested":
+        from datetime import datetime, timedelta, timezone
+        from api.app.ws import emit_task_cancel_requested
+
+        now = datetime.now(timezone.utc)
+        cancel_deadline = now + timedelta(seconds=data.grace_period_seconds or 30)
+
+        emit_task_cancel_requested(
+            task_id=result.id,
+            agent_id=result.agent_id,
+            requested_at=now.isoformat().replace('+00:00', 'Z'),
+            cancel_deadline_at=cancel_deadline.isoformat().replace('+00:00', 'Z'),
+            reason=data.reason,
+        )
+
+    emit_operator_event(socketio, "task_cancel_requested", {
+        "task_id": result.id,
+        "agent_id": result.agent_id,
+        "reason": data.reason,
+    })
 
     return CancelTaskResponse(
         task_id=result.id,
@@ -222,6 +254,7 @@ def _task_to_dict(task):
         "updated_at": task.updated_at,
         "dispatched_at": task.dispatched_at,
         "ack_deadline_at": task.ack_deadline_at,
+        "run_deadline_at": task.run_deadline_at,
         "started_at": task.started_at,
         "completed_at": task.completed_at,
         "cancel_requested_at": task.cancel_requested_at,
