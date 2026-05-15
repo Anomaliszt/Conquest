@@ -11,25 +11,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 
 @pytest.fixture()
-def temp_database(tmp_path, monkeypatch):
-    db_path = tmp_path / "test_conquest.sqlite3"
-
-    monkeypatch.setattr("api.app.config.DATABASE_PATH", str(db_path))
-
-    from api.app.db.database import engine
-    from api.app.models import Base
-    Base.metadata.create_all(bind=engine)
-
-    return db_path
-
-
-@pytest.fixture()
-def app(temp_database):
+def app():
     from api.app.main import create_app
 
-    app = create_app()
-    app.config.update(TESTING=True)
-
+    app = create_app(testing=True)
     return app
 
 
@@ -39,14 +24,9 @@ def client(app):
 
 
 @pytest.fixture()
-def db_session(temp_database):
-    from api.app.db import SessionLocal
-
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
+def db_session():
+    from api.app.db import get_session
+    return get_session()
 
 
 @pytest.fixture(autouse=True)
