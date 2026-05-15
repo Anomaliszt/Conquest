@@ -1,0 +1,1 @@
+from app.formatters.formatters import print_result
