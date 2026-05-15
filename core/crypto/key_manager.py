@@ -10,7 +10,7 @@ from typing import Optional
 from api.app.db.database import get_session
 from api.app.models.agent import AgentKey
 from api.app.utils.time import now_iso
-from api.app.crypto.aes_cipher import AESCipher, key_to_base64, key_from_base64
+from core.crypto.aes_cipher import AESCipher, key_to_base64, key_from_base64
 
 
 class KeyManager:

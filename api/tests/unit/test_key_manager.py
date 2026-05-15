@@ -6,8 +6,8 @@ Tests key generation, storage, retrieval, and rotation.
 import json
 import pytest
 from unittest.mock import MagicMock, patch, call
-from api.app.crypto.key_manager import KeyManager, generate_master_key
-from api.app.crypto.aes_cipher import AESCipher, key_to_base64
+from core.crypto.key_manager import KeyManager, generate_master_key
+from core.crypto.aes_cipher import AESCipher, key_to_base64
 
 
 def _make_manager():
@@ -18,7 +18,7 @@ def _make_manager():
 class TestKeyManager:
     """Test key management functionality."""
 
-    @patch('api.app.crypto.key_manager.get_session')
+    @patch('core.crypto.key_manager.get_session')
     def test_generate_agent_key_returns_32_bytes(self, mock_get_session):
         """Test that generated agent keys are 32 bytes."""
         session = MagicMock()
@@ -33,7 +33,7 @@ class TestKeyManager:
         session.commit.assert_called_once()
         session.close.assert_called_once()
 
-    @patch('api.app.crypto.key_manager.get_session')
+    @patch('core.crypto.key_manager.get_session')
     def test_generated_keys_are_unique_per_agent(self, mock_get_session):
         """Test that different agents get different keys."""
         mock_get_session.return_value = MagicMock()
@@ -44,7 +44,7 @@ class TestKeyManager:
 
         assert key1 != key2
 
-    @patch('api.app.crypto.key_manager.get_session')
+    @patch('core.crypto.key_manager.get_session')
     def test_get_agent_key_retrieves_stored_key(self, mock_get_session):
         """Test key retrieval from database."""
         master_key = generate_master_key()
@@ -69,7 +69,7 @@ class TestKeyManager:
 
         assert result == raw_agent_key
 
-    @patch('api.app.crypto.key_manager.get_session')
+    @patch('core.crypto.key_manager.get_session')
     def test_get_agent_key_returns_none_when_missing(self, mock_get_session):
         """Test that None is returned when no key exists."""
         session = MagicMock()
@@ -81,7 +81,7 @@ class TestKeyManager:
 
         assert result is None
 
-    @patch('api.app.crypto.key_manager.get_session')
+    @patch('core.crypto.key_manager.get_session')
     def test_rotate_agent_key_generates_new_key(self, mock_get_session):
         """Test key rotation creates a new, different key."""
         # First call: rotate queries for last key version
@@ -100,7 +100,7 @@ class TestKeyManager:
         added_record = session.add.call_args[0][0]
         assert added_record.key_version == 2
 
-    @patch('api.app.crypto.key_manager.get_session')
+    @patch('core.crypto.key_manager.get_session')
     def test_revoke_agent_key_marks_as_revoked(self, mock_get_session):
         """Test key revocation sets revoked_at on all records."""
         mock_records = [MagicMock(revoked_at=None), MagicMock(revoked_at=None)]

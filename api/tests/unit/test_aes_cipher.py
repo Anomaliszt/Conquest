@@ -5,7 +5,7 @@ Tests encryption, decryption, authentication, and error handling.
 
 import base64
 import pytest
-from api.app.crypto.aes_cipher import AESCipher, generate_key, key_to_base64, key_from_base64
+from core.crypto.aes_cipher import AESCipher, generate_key, key_to_base64, key_from_base64
 
 
 class TestAESCipher:
