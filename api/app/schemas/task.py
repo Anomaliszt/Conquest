@@ -25,6 +25,7 @@ class Task(BaseModel):
     updated_at: str
     dispatched_at: Optional[str] = None
     ack_deadline_at: Optional[str] = None
+    run_deadline_at: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     cancel_requested_at: Optional[str] = None
