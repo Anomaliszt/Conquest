@@ -1,7 +1,7 @@
 import secrets
 import hashlib
 from api.app.db import get_session
-from api.app.db.models import RegistrationToken
+from api.app.models import RegistrationToken
 from api.app.utils.time import now_iso
 
 
