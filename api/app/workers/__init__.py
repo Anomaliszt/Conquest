@@ -1,0 +1,1 @@
+from api.app.workers.deadline_checker import start_deadline_checker

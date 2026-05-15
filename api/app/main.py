@@ -27,7 +27,7 @@ def create_app(testing=False):
     register_handlers()
 
     if not testing:
-        from api.app.ws.deadlines import start_deadline_checker
+        from api.app.workers import start_deadline_checker
         start_deadline_checker()
 
     @app.get("/")
