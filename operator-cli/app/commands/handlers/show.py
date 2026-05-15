@@ -1,4 +1,10 @@
+"""Handlers for show commands in the operator CLI.
+
+This module implements `show agents`, `show tasks`, and `show agent <id>`.
+"""
+
 def show_agents(parts, api):
+    """Handle the `show agents` command."""
     status = None
     if len(parts) > 2 and parts[2].lower() == "online":
         status = "online"

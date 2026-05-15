@@ -1,4 +1,10 @@
+"""Task command handlers for the CLI.
+
+Supports fetching task results and cancelling tasks.
+"""
+
 def result(parts, api):
+    """Handle the `result` command for a task."""
     if len(parts) < 2:
         return {"error": "Usage: result <task_id>"}
     task_id = parts[1]

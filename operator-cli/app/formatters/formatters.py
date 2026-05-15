@@ -1,25 +1,54 @@
+"""Terminal output formatters using Rich library.
+
+Provides colored, table-based output for:
+- Agent lists and details
+- Task lists and details
+- Error and success messages
+"""
+
 from rich.console import Console
 from rich.table import Table
 
+
 console = Console()
 
+
 def print_result(result, ctx=None):
+    """Format and print command results to terminal.
+    
+    Routes different result types to appropriate formatters:
+    - Error dicts -> red error message
+    - Success dicts -> green success message  
+    - Lists of agents -> agent table
+    - Lists of tasks -> task table
+    - Empty lists -> "No results found"
+    - Single dicts -> key-value pairs
+    
+    Args:
+        result: Command result to format
+        ctx: Optional context (unused, for future expansion)
+    """
     if result is None:
         return
     
+    # Short-circuit known result shapes before rendering table output.
+    # Error messages
     if "error" in result:
         console.print(f"[red]Error: {result['error']}[/red]")
         return
     
+    # Success messages
     if "success" in result:
         console.print(f"[green]{result['success']}[/green]")
         return
     
+    # Special actions
     if "action" in result:
         if result["action"] == "start_websocket":
             console.print(f"[yellow]WebSocket streaming not yet implemented[/yellow]")
         return
     
+    # List results
     if isinstance(result, list):
         if not result:
             console.print("[yellow]No results found[/yellow]")
@@ -31,6 +60,7 @@ def print_result(result, ctx=None):
         else:
             for item in result:
                 console.print(item)
+    # Single dict results
     elif isinstance(result, dict):
         if "hostname" in result:
             print_agent(result)
@@ -40,7 +70,13 @@ def print_result(result, ctx=None):
             for k, v in result.items():
                 console.print(f"{k}: {v}")
 
-def print_agents(agents):
+
+def print_agents(agents: list) -> None:
+    """Print agents as a formatted table.
+    
+    Args:
+        agents: List of agent objects
+    """
     table = Table(title="Agents", show_header=True)
     table.add_column("ID", style="cyan")
     table.add_column("Hostname")
@@ -60,14 +96,26 @@ def print_agents(agents):
     
     console.print(table)
 
-def print_agent(agent):
+
+def print_agent(agent: dict) -> None:
+    """Print single agent details as a key-value table.
+    
+    Args:
+        agent: Agent object
+    """
     table = Table(title=f"Agent: {agent.get('id')}", show_header=False)
     for k, v in agent.items():
         if k != "id":
             table.add_row(k, str(v))
     console.print(table)
 
-def print_tasks(tasks):
+
+def print_tasks(tasks: list) -> None:
+    """Print tasks as a formatted table.
+    
+    Args:
+        tasks: List of task objects
+    """
     table = Table(title="Tasks", show_header=True)
     table.add_column("ID", style="cyan")
     table.add_column("Type")
@@ -93,7 +141,13 @@ def print_tasks(tasks):
     
     console.print(table)
 
-def print_task(task):
+
+def print_task(task: dict) -> None:
+    """Print single task details as a key-value table.
+    
+    Args:
+        task: Task object
+    """
     table = Table(title=f"Task: {task.get('id')}", show_header=False)
     for k, v in task.items():
         if k != "id":

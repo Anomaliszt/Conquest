@@ -1,5 +1,17 @@
+"""Run command handler for creating tasks against agents."""
+
 def run(parts, api):
+    """Parse and execute a run command from CLI input.
+
+    Args:
+        parts: Tokenized user input command parts.
+        api: API client instance used to create the task.
+
+    Returns:
+        API response payload or an error dict.
+    """
     try:
+        # Expect syntax: run <command> on <agent_id>
         on_idx = parts.index("on")
         if on_idx < 2 or on_idx >= len(parts) - 1:
             return {"error": "Usage: run <command> on <agent_id>"}

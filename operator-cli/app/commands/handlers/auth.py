@@ -1,8 +1,24 @@
+"""Authentication command handlers."""
+
 import getpass
 from app.api.auth import login as api_login, register as api_register
 from app.core.config import save_credentials
 
-def register(parts, ctx, server):
+
+def register(parts: list, ctx: dict, server: str) -> dict:
+    """Handle operator registration.
+    
+    Usage: register <token> <username> <password>
+    Or interactive: register (prompts for all fields)
+    
+    Args:
+        parts: Command parts from parser
+        ctx: CLI context to update
+        server: C2 server URL
+    
+    Returns:
+        Success or error result dict
+    """
     if len(parts) >= 4:
         token = parts[1]
         username = parts[2]
@@ -21,7 +37,21 @@ def register(parts, ctx, server):
     except Exception as e:
         return {"error": str(e)}
 
-def login(parts, ctx, server):
+
+def login(parts: list, ctx: dict, server: str) -> dict:
+    """Handle operator login.
+    
+    Usage: login <username> <password>
+    Or interactive: login (prompts for credentials)
+    
+    Args:
+        parts: Command parts from parser
+        ctx: CLI context to update with token and auth state
+        server: C2 server URL
+    
+    Returns:
+        Success or error result dict
+    """
     if len(parts) >= 3:
         username = parts[1]
         password = parts[2]
@@ -40,9 +70,21 @@ def login(parts, ctx, server):
     except Exception as e:
         return {"error": str(e)}
 
-def logout(ctx):
+
+def logout(ctx: dict) -> dict:
+    """Handle operator logout.
+    
+    Clears stored credentials and updates context.
+    
+    Args:
+        ctx: CLI context to clear
+    
+    Returns:
+        Success result dict
+    """
     import os
     creds_path = os.path.expanduser("~/.conquest/credentials.json")
+    # Remove saved credentials from disk when logging out.
     if os.path.exists(creds_path):
         os.remove(creds_path)
     ctx["token"] = None
@@ -50,7 +92,17 @@ def logout(ctx):
     ctx["username"] = None
     return {"success": "Logged out"}
 
-def status(ctx, server):
+
+def status(ctx: dict, server: str) -> dict:
+    """Show current connection and authentication status.
+    
+    Args:
+        ctx: CLI context
+        server: C2 server URL
+    
+    Returns:
+        Status information dict
+    """
     username = ctx.get("username", "not logged in")
     authenticated = ctx.get("authenticated", False)
     token = ctx.get("token", "")

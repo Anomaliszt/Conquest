@@ -1,4 +1,10 @@
+"""Miscellaneous CLI command handlers.
+
+Includes help text and terminal control actions.
+"""
+
 def help():
+    """Return help metadata for available CLI commands."""
     return {
         "help": [
             "login [username] [password] - Authenticate",
